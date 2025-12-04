@@ -1,0 +1,138 @@
+任務：找出擁有最多朋友的前 3 個人，只計算 knows+（任意長度）形成的 network。
+
+PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+
+SELECT ?person ?count WHERE {
+  {
+    SELECT ?person (COUNT(DISTINCT ?friend) AS ?count)
+    WHERE {
+      ?person foaf:knows+/foaf:name ?friend .
+    }
+    GROUP BY ?person
+    HAVING(?count > 5)
+  }
+}
+ORDER BY DESC(?count)
+LIMIT 3
+
+******************************************
+
+任務：列出所有 Person 的完整聯絡方式，如果 email 不存在則顯示 NONE。
+並只顯示至少有一種聯絡方式的人。
+
+PREFIX ex: <http://example.org/>
+
+SELECT ?p ?email ?phone WHERE {
+  ?p a ex:Person .
+
+  OPTIONAL { ?p ex:email ?e }
+  OPTIONAL { ?p ex:phone ?ph }
+
+  BIND( COALESCE(?e, "NONE") AS ?email )
+  BIND( COALESCE(?ph, "NONE") AS ?phone )
+
+  FILTER(bound(?e) || bound(?ph))
+}
+
+******************************************
+
+任務：
+本地 endpoint 找出所有具有出版物的人，
+到 DBpedia federation 查詢該出版物的同名 Wikipedia 條目描述。
+
+PREFIX ex: <http://example.org/>
+
+SELECT ?author ?title ?abstract WHERE {
+  ?pub a ex:Publication ;
+       ex:title ?title ;
+       ex:author ?author .
+
+  SERVICE <https://dbpedia.org/sparql> {
+    ?db a dbo:Book ;
+        rdfs:label ?title ;
+        dbo:abstract ?abstract .
+    FILTER(lang(?abstract) = "en")
+    FILTER(regex(?title, "AI", "i"))
+  }
+}
+LIMIT 20 OFFSET 10
+
+
+******************************************
+
+任務：找出：
+
+出生在 1990 年後
+
+並且沒有任何兄弟姐妹（not exists sibling property）
+
+且要顯示是否有伴侶資訊（optional）
+
+PREFIX ex: <http://example.org/>
+
+SELECT ?person ?dob ?spouse WHERE {
+  ?person ex:birthDate ?dob .
+  FILTER(xsd:date(?dob) > "1990-01-01"^^xsd:date)
+
+  FILTER NOT EXISTS {
+    { ?person ex:hasSibling ?s }
+    UNION
+    { ?s ex:hasSibling ?person }
+  }
+
+  OPTIONAL { ?person ex:hasSpouse ?spouse }
+}
+
+
+******************************************
+
+任務：找出平均評分最高的前 5 個電影，包含所有評分者的清單（逗號分隔）。
+
+PREFIX ex: <http://example.org/>
+
+SELECT ?movie ?avgRating ?reviewers WHERE {
+  {
+    SELECT ?movie (AVG(?rating) AS ?avgRating)
+    WHERE {
+      ?review a ex:Review ;
+              ex:about ?movie ;
+              ex:rating ?rating .
+    }
+    GROUP BY ?movie
+    HAVING(?avgRating > 4.0)
+    ORDER BY DESC(?avgRating)
+    LIMIT 5
+  }
+
+  {
+    SELECT ?movie (GROUP_CONCAT(DISTINCT ?user; separator=", ") AS ?reviewers)
+    WHERE {
+      ?review ex:about ?movie ;
+              ex:reviewer ?user .
+    }
+    GROUP BY ?movie
+  }
+}
+
+
+******************************************
+
+任務：搜尋所有指定國家的市長（mayor），
+如果城市沒有 mayor 則不顯示，
+並排除掉有 corruption records 的人。
+
+PREFIX ex: <http://example.org/>
+
+VALUES ?country { ex:USA ex:Canada ex:Mexico }
+
+SELECT ?city ?country ?mayor WHERE {
+  ?city ex:locatedIn ?country .
+
+  OPTIONAL {
+    ?city ex:hasLeader/ex:holdsPosition ?mayor .
+    FILTER NOT EXISTS { ?mayor ex:hasCorruptionRecord ?rec }
+  }
+
+  FILTER(bound(?mayor))
+}
+ORDER BY ?country ?city
